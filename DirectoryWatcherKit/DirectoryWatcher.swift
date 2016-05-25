@@ -153,10 +153,10 @@ public class DirectoryWatcher {
         performOnWatcherQueue {
             guard self.autoWatchSubdirectory else { return }
             var directories = Set<String>()
-            if let directoryEnumerator = self.fm.enumeratorAtPath(self.watchPath) {
+            if let directoryEnumerator = try? self.fm.contentsOfDirectoryAtPath(self.watchPath) {
                 for file in directoryEnumerator {
                     let directoryPath = self.watchPath as NSString
-                    let fullFilename = directoryPath.stringByAppendingPathComponent(file as! String)
+                    let fullFilename = directoryPath.stringByAppendingPathComponent(file)
                     var isDir: ObjCBool = false
                     if self.fm.fileExistsAtPath(fullFilename, isDirectory: &isDir) && isDir.boolValue {
                         directories.insert(fullFilename)
