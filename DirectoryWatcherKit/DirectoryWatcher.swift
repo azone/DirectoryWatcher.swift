@@ -51,7 +51,7 @@ public class DirectoryWatcher {
     private static var QueueSpecificContext = 0
 
     static private let WatcherQueue: dispatch_queue_t = {
-        let queue = dispatch_queue_create("cn.firestudio.directory-watcher", DISPATCH_QUEUE_CONCURRENT)
+        let queue = dispatch_queue_create("cn.firestudio.directory-watcher", DISPATCH_QUEUE_SERIAL)
         dispatch_queue_set_specific(queue, &DirectoryWatcher.QueueSpecificKey, &DirectoryWatcher.QueueSpecificContext, nil)
         return queue
     }()
