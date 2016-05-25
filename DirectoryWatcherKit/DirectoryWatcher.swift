@@ -31,6 +31,18 @@ public class DirectoryWatcher {
     private var source: dispatch_source_t!
     private let fm = NSFileManager.defaultManager()
 
+    public private(set) var parentWatcher: DirectoryWatcher?
+    public var rootWatcher: DirectoryWatcher {
+        var parentWatcher = self.parentWatcher
+        while parentWatcher?.parentWatcher != nil {
+            parentWatcher = parentWatcher?.parentWatcher
+        }
+        if parentWatcher == nil {
+            return self
+        }
+        return parentWatcher!
+    }
+
     public weak var delegate: DirectoryWatcherDelegate?
 
     public private(set) var monitoring = false
@@ -127,6 +139,7 @@ public class DirectoryWatcher {
         guard monitoring else { return }
 
         performOnWatcherQueue {
+            self.parentWatcher = nil
             for (_, submonitor) in self.subdirectoriesWatcher {
                 submonitor.stopMonitoring()
             }
@@ -156,6 +169,7 @@ public class DirectoryWatcher {
                     self.subdirectories.insert($0)
                     let dw = DirectoryWatcher(watchPath: $0, autoWatchSubdirectory: true)
                     dw.delegate = self.delegate
+                    dw.parentWatcher = self
                     dw.startMonitoring()
                     self.subdirectoriesWatcher[$0] = dw
                 }
