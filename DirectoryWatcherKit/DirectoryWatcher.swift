@@ -35,7 +35,14 @@ public class DirectoryWatcher {
 
     public private(set) var monitoring = false
 
-    static private let watcherQueue = dispatch_queue_create("cn.firestudio.directory-watcher", DISPATCH_QUEUE_CONCURRENT)
+    private static var QueueSpecificKey = 0
+    private static var QueueSpecificContext = 0
+
+    static private let WatcherQueue: dispatch_queue_t = {
+        let queue = dispatch_queue_create("cn.firestudio.directory-watcher", DISPATCH_QUEUE_CONCURRENT)
+        dispatch_queue_set_specific(queue, &DirectoryWatcher.QueueSpecificKey, &DirectoryWatcher.QueueSpecificContext, nil)
+        return queue
+    }()
 
     public init(watchPath: String, autoWatchSubdirectory: Bool = false) {
         self.watchPath = watchPath
@@ -46,6 +53,8 @@ public class DirectoryWatcher {
     }
 
     deinit {
+        stopMonitoring()
+        
         let nc = NSNotificationCenter.defaultCenter()
         nc.removeObserver(self, name: DirectoryWatchDirectoryDeletedNotification, object: nil)
         nc.removeObserver(self, name: DirectoryWatchDirectoryRenamedNotification, object: nil)
@@ -62,7 +71,7 @@ public class DirectoryWatcher {
 
         watchSubdirectories()
         
-        source = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, UInt(fid), DISPATCH_VNODE_WRITE | DISPATCH_VNODE_DELETE | DISPATCH_VNODE_RENAME, DirectoryWatcher.watcherQueue)
+        source = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, UInt(fid), DISPATCH_VNODE_WRITE | DISPATCH_VNODE_DELETE | DISPATCH_VNODE_RENAME, DirectoryWatcher.WatcherQueue)
         dispatch_source_set_event_handler(source) { 
             let mask = dispatch_source_get_data(self.source)
             if mask & DISPATCH_VNODE_DELETE == DISPATCH_VNODE_DELETE {
@@ -115,56 +124,75 @@ public class DirectoryWatcher {
     }
 
     public func stopMonitoring() {
-        for (_, submonitor) in subdirectoriesWatcher {
-            submonitor.stopMonitoring()
+        guard monitoring else { return }
+
+        performOnWatcherQueue {
+            for (_, submonitor) in self.subdirectoriesWatcher {
+                submonitor.stopMonitoring()
+            }
+            self.subdirectoriesWatcher.removeAll()
+            self.subdirectories.removeAll()
+            dispatch_source_cancel(self.source)
         }
-        subdirectoriesWatcher.removeAll()
-        subdirectories.removeAll()
-        dispatch_source_cancel(source)
     }
 
     private func watchSubdirectories() {
-        guard self.autoWatchSubdirectory else { return }
-        var directories = Set<String>()
-        if let directoryEnumerator = fm.enumeratorAtPath(self.watchPath) {
-            for file in directoryEnumerator {
-                let directoryPath = self.watchPath as NSString
-                let fullFilename = directoryPath.stringByAppendingPathComponent(file as! String)
-                var isDir: ObjCBool = false
-                if fm.fileExistsAtPath(fullFilename, isDirectory: &isDir) && isDir.boolValue {
-                    directories.insert(fullFilename)
+        performOnWatcherQueue {
+            guard self.autoWatchSubdirectory else { return }
+            var directories = Set<String>()
+            if let directoryEnumerator = self.fm.enumeratorAtPath(self.watchPath) {
+                for file in directoryEnumerator {
+                    let directoryPath = self.watchPath as NSString
+                    let fullFilename = directoryPath.stringByAppendingPathComponent(file as! String)
+                    var isDir: ObjCBool = false
+                    if self.fm.fileExistsAtPath(fullFilename, isDirectory: &isDir) && isDir.boolValue {
+                        directories.insert(fullFilename)
+                    }
                 }
             }
-        }
 
-        directories.forEach {
-            if !self.subdirectories.contains($0) {
-                self.subdirectories.insert($0)
-                let dw = DirectoryWatcher(watchPath: $0, autoWatchSubdirectory: true)
-                dw.delegate = delegate
-                dw.startMonitoring()
-                self.subdirectoriesWatcher[$0] = dw
+            directories.forEach {
+                if !self.subdirectories.contains($0) {
+                    self.subdirectories.insert($0)
+                    let dw = DirectoryWatcher(watchPath: $0, autoWatchSubdirectory: true)
+                    dw.delegate = self.delegate
+                    dw.startMonitoring()
+                    self.subdirectoriesWatcher[$0] = dw
+                }
             }
         }
     }
 
     @objc private func removeSubdirectoryWatcher(notification: NSNotification) {
-        guard let deletedPath = notification.userInfo?[DirectoryWatchPathKey] as? String else { return }
-        if subdirectories.contains(deletedPath) {
-            subdirectories.remove(deletedPath)
-            if let dw = subdirectoriesWatcher.removeValueForKey(deletedPath) where dw.monitoring {
-                dw.stopMonitoring()
+        performOnWatcherQueue {
+            guard let deletedPath = notification.userInfo?[DirectoryWatchPathKey] as? String else { return }
+            if self.subdirectories.contains(deletedPath) {
+                self.subdirectories.remove(deletedPath)
+                if let dw = self.subdirectoriesWatcher.removeValueForKey(deletedPath) where dw.monitoring {
+                    dw.stopMonitoring()
+                }
             }
         }
     }
 
     @objc private func clearRenamedWatcher(notification: NSNotification) {
-        guard let renamedPath = notification.userInfo?[DirectoryWatchOldPathKey] as? String else { return }
-        if subdirectories.contains(renamedPath) {
-            subdirectories.remove(renamedPath)
-            if let dw = subdirectoriesWatcher.removeValueForKey(renamedPath) where dw.monitoring {
-                dw.stopMonitoring()
+        performOnWatcherQueue {
+            guard let renamedPath = notification.userInfo?[DirectoryWatchOldPathKey] as? String else { return }
+            if self.subdirectories.contains(renamedPath) {
+                self.subdirectories.remove(renamedPath)
+                if let dw = self.subdirectoriesWatcher.removeValueForKey(renamedPath) where dw.monitoring {
+                    dw.stopMonitoring()
+                }
             }
         }
+    }
+}
+
+private func performOnWatcherQueue(block: () -> Void) {
+    let specific = dispatch_get_specific(&DirectoryWatcher.QueueSpecificKey)
+    if specific == &DirectoryWatcher.QueueSpecificContext {
+        block()
+    } else {
+        dispatch_async(DirectoryWatcher.WatcherQueue, block)
     }
 }
