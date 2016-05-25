@@ -202,6 +202,19 @@ public class DirectoryWatcher {
     }
 }
 
+extension DirectoryWatcher: CustomStringConvertible {
+    public var description: String {
+        let oid = ObjectIdentifier(self).uintValue
+        var descriptionString = String(format: "<\(self.dynamicType): 0x%lx> {", oid)
+        descriptionString += "\n\twatch path: \(watchPath),"
+        if !subdirectories.isEmpty {
+            descriptionString += "\n\twatched subdirectories: [\n\(subdirectories.joinWithSeparator(",\n"))\n\t\t]"
+        }
+        descriptionString += "\n}"
+        return descriptionString
+    }
+}
+
 private func performOnWatcherQueue(block: () -> Void) {
     let specific = dispatch_get_specific(&DirectoryWatcher.QueueSpecificKey)
     if specific == &DirectoryWatcher.QueueSpecificContext {
