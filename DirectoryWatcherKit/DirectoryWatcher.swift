@@ -16,7 +16,7 @@ public let DirectoryWatchPathKey = "cn.firestudio.directory-watcher.DirectoryWat
 public let DirectoryWatchOldPathKey = "cn.firestudio.directory-watcher.DirectoryWatchOldPathKey"
 public let DirectoryWatchNewPathKey = "cn.firestudio.directory-watcher.DirectoryWatchNewPathKey"
 
-public protocol DirectoryWatcherDelegate {
+public protocol DirectoryWatcherDelegate: class {
     func directoryWatcher(directoryWatcher: DirectoryWatcher, filesChangedAtPath path: String)
     func directoryWatcher(directoryWatcher: DirectoryWatcher, directoryDeletedAtPath path: String)
     func directoryWatcher(directoryWatcher: DirectoryWatcher, renamedDirectory fromDirectory: String, toDirectory: String)
@@ -31,7 +31,7 @@ public class DirectoryWatcher {
     private var source: dispatch_source_t!
     private let fm = NSFileManager.defaultManager()
 
-    public var delegate: DirectoryWatcherDelegate?
+    public weak var delegate: DirectoryWatcherDelegate?
 
     public private(set) var monitoring = false
 
