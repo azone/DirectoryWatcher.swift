@@ -23,7 +23,7 @@ public protocol DirectoryWatcherDelegate: class {
 }
 
 public class DirectoryWatcher {
-    private var watchPath: String!
+    public private(set) var watchPath: String!
     private var autoWatchSubdirectory: Bool
     private var fid: CInt = 0
     private var subdirectoriesWatcher = [String: DirectoryWatcher]()
