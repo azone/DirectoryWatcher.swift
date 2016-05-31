@@ -31,7 +31,7 @@ public class DirectoryWatcher {
     private var source: dispatch_source_t!
     private let fm = NSFileManager.defaultManager()
 
-    public private(set) var parentWatcher: DirectoryWatcher?
+    public private(set) weak var parentWatcher: DirectoryWatcher?
     public var rootWatcher: DirectoryWatcher {
         var parentWatcher = self.parentWatcher
         while parentWatcher?.parentWatcher != nil {
